@@ -1,0 +1,8 @@
+__pycache__/
+build/
+re/*.bin
+re/game_4000.s
+re/bank0_6000.s
+Ballblazer.rom
+re/music_driver_7584.s
+re/tables.txt
