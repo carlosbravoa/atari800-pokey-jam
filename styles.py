@@ -16,8 +16,6 @@ A style:
   bass/comp   range, presets, pattern banks: (tick, ticks, code)
   drums       16-step patterns per drum: x = always, 1-9 = 10-90 %, . = never;
               split: a repeat within two 16ths moves to the other POKEY
-  mono        one-POKEY layout: "lead" (lead on the 16-bit pair, bass on ch3)
-              or "band" (bass on the pair, chords on ch3; the default)
   mix         volume cap per track [lead, bass, comp1, comp2], 0 = full
   sections    per section: bars (default = the form), lead variation odds,
               bass/comp/drum pattern kinds
@@ -215,7 +213,6 @@ BOSSA_RIFFS = [      # lyrical: long notes, 9ths, anticipations
 
 STYLES = {
     "JAZZ": dict(
-        mono="lead",
         blurb="swing, walking bass, standards-style forms (Ballblazer's heir)",
         beat=(18, 30), swing=2,
         keys=[5, 10, 3, 0, 7, 8],
@@ -285,7 +282,6 @@ STYLES = {
         final="Imaj7",
     ),
     "BLUES": dict(
-        mono="lead",
         blurb="12-bar shuffle, boogie bass, blues-scale licks",
         beat=(22, 32), swing=2,
         keys=[4, 9, 7, 0, 2],
@@ -433,7 +429,6 @@ STYLES = {
         tail=48,
     ),
     "CHIP": dict(
-        mono="lead",
         blurb="8-bit action: fast arps, octave bass, driving beat",
         beat=(18, 24), swing=0,
         keys=[0, 2, 4, 7, 9],
@@ -473,7 +468,6 @@ STYLES = {
 
 
 STYLES["ROCK"] = dict(
-        mono="lead",
     blurb="power chords, eighth-note drive, pentatonic guitar-style leads",
     beat=(22, 28), swing=0,
     keys=[4, 9, 2, 7, 0],
@@ -573,7 +567,6 @@ STYLES["HIP HOP"] = dict(
 )
 
 STYLES["GRID"] = dict(
-        mono="lead",
     blurb="Ballblazer's Song of the Grid: its own riffs over its G#-minor groove",
     beat=(23, 25), swing=0,
     keys=[8, 8, 8, 1, 3],
@@ -656,7 +649,6 @@ STYLES["FUNK"] = dict(
 )
 
 STYLES["BOSSA"] = dict(
-        mono="lead",
     blurb="bossa nova: clave-like guitar, root-fifth bass, soft lyrical lines",
     beat=(26, 31), swing=0,
     keys=[5, 0, 7, 2, 10],

@@ -34,7 +34,7 @@ VOICING = {"triad": 0, "guide": 1, "power": 2}
 BYTES = ["beat_lo", "beat_hi", "swing", "lead_lo", "lead_hi", "lead_gap", "snap",
          "bass_lo", "bass_hi", "bass_gap", "bass_change", "comp_lo", "comp_hi",
          "comp_gap", "comp_change", "voicing", "dr_change", "dr_fill", "final_root",
-         "tail", "mix0", "mix1", "mix2", "mix3", "dsplit", "hook", "hookp", "mono"]
+         "tail", "mix0", "mix1", "mix2", "mix3", "dsplit", "hook", "hookp"]
 WORDS = ["keys", "forms", "riffs", "key_scale", "lead_presets", "trade_presets",
          "bass_presets", "comp_presets", "fills", "arrangements", "final_tones", "name"]
 # section record
@@ -185,8 +185,7 @@ def emit_style(a, name, c):
                   voicing=VOICING[C["voicing"]], dr_change=D["change"], dr_fill=D["fill"],
                   final_root=fr, tail=c["tail"], mix0=c["mix"][0], mix1=c["mix"][1],
                   mix2=c["mix"][2], mix3=c["mix"][3], dsplit=int(D["split"]),
-                  hook=255 if L["hook"] is None else L["hook"], hookp=L["hookp"],
-                  mono=c["mono"])
+                  hook=255 if L["hook"] is None else L["hook"], hookp=L["hookp"])
     title = name.ljust(16)[:16]
     words = dict(keys=a.blist("key", c["keys"]), forms=a.wlist("fl", forms),
                  riffs=a.wlist("rl", riffs),

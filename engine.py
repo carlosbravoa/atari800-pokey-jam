@@ -109,7 +109,6 @@ def compile_style(st):
     c["final"] = (r, CHORDS[q][0])
     c["tail"] = st.get("tail", 2 * TPB)
     c["mix"] = list(st.get("mix", [0, 0, 0, 0]))
-    c["mono"] = 1 if st.get("mono") == "lead" else 0
     return c
 
 
