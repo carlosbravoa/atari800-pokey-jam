@@ -43,6 +43,8 @@ JMUTE    = $06FC        ; voices muted (bit per panel column: LEAD VOICE DRUM
 JMUTED   = $06FD        ; ... as the VBI has applied them
 JREL     = $06FE        ; VBI scratch: columns to release
 JLC      = $06FF        ; jam_labels' column
+JHW      = $057F        ; the machine really has a second POKEY (display only:
+                        ;  POKEY JAM always drives both, see jam_catalog)
 RNDROW   = 22
 JYF      = $06F9        ; frame the panel was last drawn from a yield
 JVS      = $06FA        ; 2: VP snapshot in jam_pump
@@ -295,7 +297,11 @@ jam_labels:
         lda #5
         sta JLC
 @c:     ldx JLC
-        lda labcol,x
+        lda JHW                 ; one POKEY: the left columns are blank
+        bne @c1
+        cpx #3
+        bcc @nx
+@c1:    lda labcol,x
         tay
         lda labw,x
         sta PT4
@@ -311,7 +317,7 @@ jam_labels:
         iny
         dec PT4
         bne @l
-        dec JLC
+@nx:    dec JLC
         bpl @c
         rts
 labcol:     .byte 3,9,15,21,27,33
@@ -363,8 +369,17 @@ map_jmono:
 ; the style list, title, RANDOM flag, panel mode (JAMCODE: the MAIN is full)
 .segment "JAMCODE"
 .assert 1 + NSTYLES * 24 <= $100, error, "the style list outgrew $0480-$057F"
+; One POKEY or two, POKEY JAM plays its stereo arrangement. On a one-POKEY
+; machine $D21x folds onto POKEY1 and the second POKEY's part, written last in
+; every VBI, wins: bass, chords and the second drum part, no lead -- the mono
+; mix, by design. So a wrong detection can't change the sound: STEREO stays 1
+; for the engine and JHW only tells the panel what the machine is.
 jam_catalog:
-        jsr jam_blank           ; (the panel is up: mono shows 3 meters)
+        lda STEREO              ; startup's detect_stereo: the machine
+        sta JHW
+        lda #1
+        sta STEREO
+        jsr jam_panel           ; (the panel was drawn for the machine)
         lda #0                  ; RANDOM starts off, every voice on
         sta jrand
         sta JMUTE
@@ -473,7 +488,7 @@ jam_show:                       ; A = style
 ; mono board). While a key is held, stereo switched off shows: POKEY2 has no
 ; keyboard, so if $D21F follows POKEY1's key bit the chips are mirrored.
 jam_monocheck:                  ; main loop: stereo gone while playing?
-        lda STEREO
+        lda JHW
         beq @x
         lda SKSTAT
         and #4
@@ -481,11 +496,9 @@ jam_monocheck:                  ; main loop: stereo gone while playing?
         lda SKSTAT+$10
         and #4
         bne @x                  ; POKEY2's key bit stays up: really stereo
-        lda #0                  ; mono now: a fresh jam in mono
-        sta STEREO
-        jsr jam_panel
-        lda SONGN
-        jmp song_load
+        lda #0                  ; one POKEY after all: only the panel changes,
+        sta JHW                 ;  the sound already is the mono mix
+        jmp jam_panel
 @x:     rts
 
 jam_panel:                      ; redraw the panel for STEREO / MONO
@@ -502,20 +515,35 @@ jam_panel:                      ; redraw the panel for STEREO / MONO
         jsr jam_rflag
         jsr jam_labels
         ; fall through
-jam_blank:                      ; mono: no meters where nothing can sound
-        lda STEREO
-        bne @x
+jam_blank:                      ; one POKEY: MONO, and only the meters that
+        lda JHW                 ;  sound (BASS HARM DRUM2): POKEY1's part is
+        bne @x                  ;  overwritten every frame
+        ldx #2
+        lda #$FF
+@d:     sta vusrc,x
+        dex
+        bpl @d
         ldx #19
         lda #0
-@b:     sta SCREEN+5*40+20,x
-        sta SCREEN+6*40+20,x
-        sta SCREEN+7*40+20,x
-        sta SCREEN+8*40+20,x
-        sta SCREEN+9*40+20,x
-        sta SCREEN+10*40+20,x
-        sta SCREEN+11*40+20,x
-        sta SCREEN+12*40+20,x
-        sta SCREEN+13*40+20,x
+@b:     sta SCREEN+5*40,x
+        sta SCREEN+6*40,x
+        sta SCREEN+7*40,x
+        sta SCREEN+8*40,x
+        sta SCREEN+9*40,x
+        sta SCREEN+10*40,x
+        sta SCREEN+11*40,x
+        sta SCREEN+12*40,x
+        sta SCREEN+13*40,x
+        sta SCREEN+14*40,x
         dex
         bpl @b
+        ldx #3
+@m:     lda mono_txt,x
+        sta SCREEN+2*40+16,x
+        dex
+        bpl @m
+        lda #0
+        sta SCREEN+2*40+20
+        sta SCREEN+2*40+21
 @x:     rts
+mono_txt:   .byte 'M'-32,'O'-32,'N'-32,'O'-32
