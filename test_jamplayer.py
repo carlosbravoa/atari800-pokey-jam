@@ -107,8 +107,11 @@ NOTE, VB, SH = 0x060A, 0x0B40, 0x0B78
 seen = dict(lead=set(), lpre=set(), v0=set(), vpre=set())
 loud, p2 = [0, 0, 0], False
 mapt = list(mem[L("mapt"):L("mapt") + 24])
+lead_lay = styles.STYLES[style].get("mono") == "lead"     # one POKEY: LEAD or BAND layout
 if a.mono:
-    check(mapt == list(mem[L("map_jmono"):L("map_jmono") + 24]), "mono: the JAM mono map is loaded")
+    want_map = "map_jlead" if lead_lay else "map_jmono"
+    check(mapt == list(mem[L(want_map):L(want_map) + 24]),
+          f"mono: the {'LEAD' if lead_lay else 'BAND'} layout's map is loaded")
 sevn_prev, executed, starved, worst = mem[EQ["SEVN"]], 0, 0, 0
 for f in range(frames):
     call("vbi")
@@ -140,17 +143,21 @@ check(abs(executed - want) <= 8, f"sequencer played {executed} events, engine.py
       f"before frame {frames}")
 if a.mono:
     P = engine.PRESETS
-    bass = {ev[3] for ev in e.out if ev[1] == 0 and ev[2] == engine.BASS}
-    comp = {ev[3] for ev in e.out if ev[1] == 0 and ev[2] == engine.COMP1}
+    pair_tr, ch3_tr = (engine.LEAD, engine.BASS) if lead_lay else (engine.BASS, engine.COMP1)
+    pair_notes = {ev[3] for ev in e.out if ev[1] == 0 and ev[2] == pair_tr}
+    ch3_notes = {ev[3] for ev in e.out if ev[1] == 0 and ev[2] == ch3_tr}
     st = styles.STYLES[style]
-    check(seen["lead"] and seen["lead"] <= bass,
-          f"mono: the 16-bit pair plays only bass notes ({len(seen['lead'])} pitches)")
-    check(seen["v0"] and seen["v0"] <= comp,
-          f"mono: ch3 plays only comping notes ({len(seen['v0'])} pitches)")
-    check({P[i] for i in seen["lpre"]} <= set(st["bass"]["presets"]),
-          f"mono: bass sound {sorted(P[i] for i in seen['lpre'])}")
-    check({P[i] for i in seen["vpre"]} <= set(st["comp"]["presets"]),
-          f"mono: comping sound {sorted(P[i] for i in seen['vpre'])}")
+    names = ("lead", "bass") if lead_lay else ("bass", "comping")
+    check(seen["lead"] and seen["lead"] <= pair_notes,
+          f"mono: the 16-bit pair plays only {names[0]} notes ({len(seen['lead'])} pitches)")
+    check(seen["v0"] and seen["v0"] <= ch3_notes,
+          f"mono: ch3 plays only {names[1]} notes ({len(seen['v0'])} pitches)")
+    pair_ok = set(st["lead"]["presets"]) if lead_lay else set(st["bass"]["presets"])
+    ch3_ok = {"PIANO"} if lead_lay else set(st["comp"]["presets"])
+    check({P[i] for i in seen["lpre"]} <= pair_ok,
+          f"mono: pair sound {sorted(P[i] for i in seen['lpre'])}")
+    check({P[i] for i in seen["vpre"]} <= ch3_ok,
+          f"mono: ch3 sound {sorted(P[i] for i in seen['vpre'])}")
     drums = any(ev[1] == 2 and ev[0] < frames - 1 for ev in e.out)
     check(loud[0] and loud[1] and (loud[2] or not drums) and not p2, f"mono: ch1+2, ch3, ch4 sound; POKEY2 silent (vol {loud}, p2 {p2})")
     for x, want_bit in ((1, 8), (3, 0)):

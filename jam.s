@@ -181,8 +181,6 @@ qn:      .res 1
 qf0:     .res 256
 qf1:     .res 256
 qf2:     .res 256
-qk:      .res 256
-qc:      .res 256
 qa:      .res 256
 hf:      .res 3             ; flush horizon
 sent:    .res 3             ; frame of the last event sent
@@ -272,6 +270,10 @@ qdd:     .res 2
 qch:     .res 1
 pbv:     .res 1
 dboost:  .res 1             ; drum odds shift at this intensity (signed)
+
+.segment "JAMBSS5"             ; $0700-$08FF: the loader's while loading only
+qk:      .res 256
+qc:      .res 256
 
 .segment "JAMBSS3"             ; the bar's drum hits ($0A40: the synth's key log)
 DHMAX    = 64

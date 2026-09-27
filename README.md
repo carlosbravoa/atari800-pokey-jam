@@ -37,10 +37,18 @@ With two POKEYs (a stereo upgrade, or the stereo option in the emulator)
 you hear the whole band: lead, bass, chords, a fourth voice for trades and
 answers, and drums on both chips.
 
-With one POKEY it plays the backing band: bass, chords and drums, with no
-lead. POKEY's only in-tune bass channel is its 16-bit pair, so the bass
-gets it, and the chords take the third channel. The panel then reads
-`BASS CHORD DRUM`.
+With one POKEY there are two layouts, and `M` switches between them while
+it plays (each style starts on its own default):
+
+- **LEAD**: the lead on POKEY's 16-bit pair, the bass on the third channel
+  (an octave up, where an 8-bit channel is in tune, with a plucked sound),
+  and the drums. The panel reads `LEAD BASS DRUM`.
+- **BAND**: the bass on the 16-bit pair (POKEY's only in-tune bass channel),
+  the chords on the third channel, and the drums, with no lead. The panel
+  reads `BASS CHORD DRUM`.
+
+The second POKEY is looked for once, at startup. Switch the machine's
+stereo on or off, then restart POKEY JAM.
 
 ## Keys
 
@@ -49,15 +57,16 @@ gets it, and the chords take the third channel. The panel then reads
 | `<` `>` | previous / next style |
 | `RETURN` | a new tune in the current style |
 | `R` | RANDOM on/off: each new tune picks its own style (`RANDOM` shows inverse while on) |
-| `1`-`6` | mute / unmute a panel column: LEAD, LAYER/VOICE, DRUM, BASS, HARM, DRUM2 (one POKEY: `1`-`3` for BASS, CHORD, DRUM) |
+| `1`-`6` | mute / unmute a panel column: LEAD, LAYER/VOICE, DRUM, BASS, HARM, DRUM2 (one POKEY: `1`-`3` for its three columns) |
+| `M` | one POKEY: switch the layout, LEAD or BAND |
 | `L` or `TAB` | the style list |
 | `SPACE` | pause / resume |
 | `ESC` | stop |
 
 **Tip: for background music, press `1` to mute the lead, then `R` for
 RANDOM, and leave it running.** The backing keeps going on its own and moves
-from style to style, one tune at a time. (With one POKEY there's no lead
-to mute: just press `R`.)
+from style to style, one tune at a time. (With one POKEY, press `M` for
+the BAND layout instead.)
 
 ## Build from source
 

@@ -43,6 +43,8 @@ JMUTE    = $06FC        ; voices muted (bit per panel column: LEAD VOICE DRUM
 JMUTED   = $06FD        ; ... as the VBI has applied them
 JREL     = $06FE        ; VBI scratch: columns to release
 JLC      = $06FF        ; jam_labels' column
+JMLAY    = $057F        ; one POKEY: 0 BAND (bass on the pair, chords on ch3),
+                        ;  1 LEAD (lead on the pair, bass on ch3); M flips it
 RNDROW   = 22
 JYF      = $06F9        ; frame the panel was last drawn from a yield
 JVS      = $06FA        ; 2: VP snapshot in jam_pump
@@ -60,7 +62,6 @@ JVS      = $06FA        ; 2: VP snapshot in jam_pump
 ; song_load's stream setup: A = style -> a fresh performance in the ring
 jam_start:
         sta JSTYLE
-        jsr jam_detect          ; the machine may have changed
         lda RANDOM              ; a new seed every time
         sta JSEED
         sta JSEEDP
@@ -70,6 +71,7 @@ jam_start:
         lda JSTYLE
         sta JGSTY
         jsr jam_init
+        jsr jam_layout          ; one POKEY: the style's layout
         lda #0
         sta JTPEND
         jsr jam_bar
@@ -458,6 +460,16 @@ jam_rflag:                      ; "RANDOM" in the key line: inverse while on
 jam_show:                       ; A = style
         sta SONGN
         sta JSTYLE
+        lda JMLAY
+        pha
+        jsr jam_layout          ; (styn: the composer is on this style now)
+        pla
+        ldx STEREO              ; (stereo: layouts don't apply)
+        bne @l
+        cmp JMLAY
+        beq @l
+        jsr jam_relayout
+@l:     lda JSTYLE
         jsr style_name
         ldy #15
 @t:     lda (GP),y
@@ -469,19 +481,10 @@ jam_show:                       ; A = style
 
 
 .segment "CODE"
-; the machine: POKEY JAM re-checks for a second POKEY at every new jam or
-; style (jam_start) and, while a key is held, sees stereo switched off (POKEY2
-; has no keyboard: if $D21F follows POKEY1's key bit, the chips are mirrored)
-jam_detect:                     ; jam_start: the panel follows a change
-        lda STEREO
-        pha
-        jsr detect_stereo
-        pla
-        cmp STEREO
-        beq @x
-        jmp jam_panel
-@x:     rts
-
+; the machine: the second POKEY is checked once, at startup (detect_stereo's
+; RANDOM-freeze test gave false "stereo" when re-run mid-performance on a
+; mono board). While a key is held, stereo switched off shows: POKEY2 has no
+; keyboard, so if $D21F follows POKEY1's key bit the chips are mirrored.
 jam_monocheck:                  ; main loop: stereo gone while playing?
         lda STEREO
         beq @x
@@ -491,7 +494,10 @@ jam_monocheck:                  ; main loop: stereo gone while playing?
         lda SKSTAT+$10
         and #4
         bne @x                  ; POKEY2's key bit stays up: really stereo
-        lda SONGN               ; mono now: a fresh jam in mono
+        lda #0                  ; mono now: a fresh jam in mono
+        sta STEREO
+        jsr jam_panel
+        lda SONGN
         jmp song_load
 @x:     rts
 
@@ -526,3 +532,104 @@ jam_blank:                      ; mono: no meters where nothing can sound
         dex
         bpl @b
 @x:     rts
+
+; ---------------------------------------------------------------------------
+; one POKEY: two layouts (JAMCODE)
+.segment "JAMCODE"
+jam_layout:                     ; the current style's default
+        ldy #ST_MONO
+        lda (STYP),y
+        sta JMLAY
+        rts
+
+; song_load (mono): the layout's command map -> mapt; labels and the M line
+jam_monomap:
+        ldy #23
+        lda JMLAY
+        bne @l
+@b:     lda map_jmono,y
+        sta mapt,y
+        dey
+        bpl @b
+        bmi @t
+@l:     lda map_jlead,y
+        sta mapt,y
+        dey
+        bpl @l
+@t:     ldx #0                  ; labels + "M MONO MIX: LEAD/BAND" (row 20)
+        lda JMLAY
+        beq @t2
+        ldx #mtx_lead-mtx_band
+@t2:    ldy #0
+@t3:    lda mtx_band,x
+        cmp #$FF
+        beq @t4
+        sta SCREEN+20*40+10,y
+        inx
+        iny
+        bne @t3
+@t4:    ldx #0
+        lda JMLAY
+        beq @t5
+        ldx #lab_lead-lab_band
+@t5:    ldy #0
+@t6:    lda lab_band,x
+        sta SCREEN+14*40+3,y
+        inx
+        iny
+        cpy #11
+        bne @t6
+        rts
+
+; M: switch the layout while it plays
+jam_mtoggle:
+        lda STEREO
+        bne @x
+        lda JMLAY
+        eor #1
+        sta JMLAY
+        jsr hush
+        jmp jam_relayout
+@x:     rts
+
+; a layout change mid-performance: map, sounds and levels for the pair and ch3
+jam_relayout:
+        jsr jam_monomap
+        lda JMLAY
+        beq @band
+        lda inst                ; LEAD: the lead's sound on the pair,
+        jsr set_preset
+        ldx #0                  ;  a plucked PIANO for the 8-bit bass
+        lda #0
+        jsr lv_load
+        lda jlastlv
+        sta MIXL
+        lda jlastlv+1
+        sta MIXV
+        jmp jam_labels
+@band:  lda inst+1              ; BAND: the bass's sound on the pair,
+        jsr set_preset
+        ldx #0                  ;  the comping's on ch3
+        lda inst+2
+        jsr lv_load
+        lda jlastlv+1
+        sta MIXL
+        lda jlastlv+2
+        sta MIXV
+        jmp jam_labels
+
+; LEAD layout map: psq op/track -> command (index op*4 + track)
+map_jlead:
+        .byte 0,2,$FF,$FF, 1,3,$FF,$FF, 6,6,6,6, 8,$FF,$FF,$FF
+        .byte $FF,$FF,$FF,$FF, 17,18,$FF,$FF
+.macro SC str                   ; text as screen codes
+        .repeat .strlen(str), I
+        .byte .strat(str, I) - 32
+        .endrep
+.endmacro
+mtx_band:   SC "M  MONO MIX: BAND "
+            .byte $FF
+mtx_lead:   SC "M  MONO MIX: LEAD "
+            .byte $FF
+lab_band:   SC "BASS  CHORD"
+lab_lead:   SC "LEAD  BASS "
