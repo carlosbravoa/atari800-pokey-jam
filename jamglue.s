@@ -44,6 +44,7 @@ JMUTE    = $06FC        ; voices muted (bit per panel column: LEAD VOICE DRUM
 JMUTED   = $06FD        ; ... as the VBI has applied them
 JREL     = $06FE        ; VBI scratch: columns to release
 JLC      = $06FF        ; jam_labels' column
+JMONO    = $057E        ; frames in a row that read like one POKEY
 JHW      = $057F        ; the machine really has a second POKEY. With two it
                         ;  plays stereo; with one, STEREO picks the mix (M):
                         ;  1 STEREO>MONO (both driven, POKEY2's part wins),
@@ -491,22 +492,27 @@ jam_show:                       ; A = style
 
 
 .segment "JAMCODE"
-; the machine: the second POKEY is checked once, at startup (detect_stereo's
-; RANDOM-freeze test gave false "stereo" when re-run mid-performance on a
-; mono board). While a key is held, stereo switched off shows: POKEY2 has no
-; keyboard, so if $D21F follows POKEY1's key bit the chips are mirrored.
-jam_monocheck:                  ; main loop: stereo gone while playing?
+; the machine: detect_stereo at startup, then every frame the same read test
+; (one POKEY reads the same KBCODE/SKSTAT through $D2x9/$D2xF and $D21x) --
+; a stereo setting switched off shows up on the panel by itself.
+jam_monocheck:                  ; main loop: really one POKEY? (the panel)
         lda JHW
         beq @x
+        lda KBCODE              ; the same chip twice reads the same: 30
+        cmp KBCODE+$10          ;  frames of that and the panel says MONO
+        bne @no                 ;  (the sound already is the mono mix)
         lda SKSTAT
-        and #4
-        bne @x                  ; no key held: nothing to compare
-        lda SKSTAT+$10
-        and #4
-        bne @x                  ; POKEY2's key bit stays up: really stereo
-        lda #0                  ; one POKEY after all: only the panel changes,
-        sta JHW                 ;  the sound already is the mono mix
+        cmp SKSTAT+$10
+        bne @no
+        inc JMONO
+        lda JMONO
+        cmp #30
+        bcc @x
+        lda #0
+        sta JHW
         jmp jam_panel
+@no:    lda #0
+        sta JMONO
 @x:     rts
 
 jam_panel:                      ; redraw the panel for STEREO / MONO

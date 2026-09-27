@@ -92,8 +92,10 @@ while m.pc != L("mainloop"):
 mem[0x0673] = 1                     # POKEY JAM always drives both POKEYs
 d = L("detect_stereo")
 mem[d:d + 6] = [0xA9, 1, 0x8D, 0x73, 0x06, 0x60]   # (lda #1 / sta STEREO / rts)
-# (detect's SKCTL writes land on SKSTAT in py65: no key is held, on either chip)
-mem[0xD20F] = mem[0xD21F] = 0xFF
+# what the chips read: one POKEY reads the same through $D2xx and $D21x; a
+# second has no keyboard (the Tang core: KBCODE $FF, SKSTAT $F7)
+mem[0xD209], mem[0xD20F] = 0x1C, 0xFF
+mem[0xD219], mem[0xD21F] = (0x1C, 0xFF) if a.mono else (0xFF, 0xF7)
 call("draw_static")
 mem[0x057F] = 0 if a.mono else 1    # JHW: what the machine is (display only)
 call("jam_panel")
