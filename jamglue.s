@@ -10,6 +10,7 @@
 ;   RETURN on the same style = a new seed = a new performance.
 ;   1-6 mute/unmute the panel's columns (the label goes inverse): their
 ;   note-ons and hits are skipped at the sequencer, the composer goes on.
+;   M, one POKEY only: the mix, STEREO>MONO or MONO>MONO (row 20)
 ;   R switches RANDOM on/off (the word goes inverse in the key line): the
 ;   music goes on, and each tune after the current one picks a style. The
 ;   title follows the style you hear, switching when its tune starts.
@@ -43,8 +44,10 @@ JMUTE    = $06FC        ; voices muted (bit per panel column: LEAD VOICE DRUM
 JMUTED   = $06FD        ; ... as the VBI has applied them
 JREL     = $06FE        ; VBI scratch: columns to release
 JLC      = $06FF        ; jam_labels' column
-JHW      = $057F        ; the machine really has a second POKEY (display only:
-                        ;  POKEY JAM always drives both, see jam_catalog)
+JHW      = $057F        ; the machine really has a second POKEY. With two it
+                        ;  plays stereo; with one, STEREO picks the mix (M):
+                        ;  1 STEREO>MONO (both driven, POKEY2's part wins),
+                        ;  0 MONO>MONO (map_jmono, every drum on ch4)
 RNDROW   = 22
 JYF      = $06F9        ; frame the panel was last drawn from a yield
 JVS      = $06FA        ; 2: VP snapshot in jam_pump
@@ -297,10 +300,15 @@ jam_labels:
         lda #5
         sta JLC
 @c:     ldx JLC
-        lda JHW                 ; one POKEY: the left columns are blank
+        lda JHW                 ; one POKEY: half the columns are blank
         bne @c1
-        cpx #3
+        lda STEREO
+        beq @sr
+        cpx #3                  ;  STEREO>MONO: the left three
         bcc @nx
+        bcs @c1
+@sr:    cpx #3                  ;  MONO>MONO: the right three
+        bcs @nx
 @c1:    lda labcol,x
         tay
         lda labw,x
@@ -482,7 +490,7 @@ jam_show:                       ; A = style
         jmp draw_songno
 
 
-.segment "CODE"
+.segment "JAMCODE"
 ; the machine: the second POKEY is checked once, at startup (detect_stereo's
 ; RANDOM-freeze test gave false "stereo" when re-run mid-performance on a
 ; mono board). While a key is held, stereo switched off shows: POKEY2 has no
@@ -516,9 +524,29 @@ jam_panel:                      ; redraw the panel for STEREO / MONO
         jsr jam_labels
         ; fall through
 jam_blank:                      ; one POKEY: MONO, and only the meters that
-        lda JHW                 ;  sound (BASS HARM DRUM2): POKEY1's part is
-        bne @x                  ;  overwritten every frame
-        ldx #2
+        lda JHW                 ;  sound, and the mix on row 20
+        beq @one
+        rts
+@one:   lda STEREO
+        bne @fold
+        ldx #19                 ; MONO>MONO: BASS CHORD DRUM on the left
+        lda #0
+@r:     sta SCREEN+5*40+20,x
+        sta SCREEN+6*40+20,x
+        sta SCREEN+7*40+20,x
+        sta SCREEN+8*40+20,x
+        sta SCREEN+9*40+20,x
+        sta SCREEN+10*40+20,x
+        sta SCREEN+11*40+20,x
+        sta SCREEN+12*40+20,x
+        sta SCREEN+13*40+20,x
+        sta SCREEN+14*40+20,x
+        dex
+        bpl @r
+        ldx #mix_mm-mix_sm
+        jmp mixline
+@fold:  ldx #2                  ; STEREO>MONO: POKEY1's part is overwritten
+                                ;  every frame -- BASS HARM DRUM2 on the right
         lda #$FF
 @d:     sta vusrc,x
         dex
@@ -545,5 +573,72 @@ jam_blank:                      ; one POKEY: MONO, and only the meters that
         lda #0
         sta SCREEN+2*40+20
         sta SCREEN+2*40+21
-@x:     rts
+        ldx #0
+mixline:                        ; X = the text's offset -> row 20
+        ldy #0
+@t:     lda mix_sm,x
+        sta SCREEN+20*40+10,y
+        inx
+        iny
+        cpy #19
+        bne @t
+        rts
 mono_txt:   .byte 'M'-32,'O'-32,'N'-32,'O'-32
+.macro SC str                   ; text as screen codes
+        .repeat .strlen(str), I
+        .byte .strat(str, I) - 32
+        .endrep
+.endmacro
+mix_sm:     SC "M  MIX: STEREO>MONO"
+mix_mm:     SC "M  MIX: MONO>MONO  "
+
+; M, one POKEY: switch the mix while it plays. STEREO>MONO: the stereo
+; arrangement, POKEY2's part winning (bass, chords, the second drum part).
+; MONO>MONO: bass on the 16-bit pair, chords on ch3, every drum on ch4.
+; No lead in either.
+jam_mtoggle:
+        lda JHW
+        bne @x                  ; two POKEYs: nothing to switch
+        jsr hush
+        lda STEREO
+        eor #1
+        sta STEREO
+        beq @mm
+        ldy #23                 ; -> STEREO>MONO
+@a:     lda map_st,y
+        sta mapt,y
+        dey
+        bpl @a
+        lda inst                ; each voice its sound and level again
+        jsr set_preset
+        ldx #0
+        lda inst+1
+        jsr lv_load
+        ldx #VBS
+        lda inst+2
+        jsr lv_load
+        ldx #V3X
+        lda inst+3
+        jsr lv_load
+        ldx #3
+@l:     lda jlastlv,x           ; lead, bass, chords, voice 4 = MIXL, MIXV..+2
+        sta MIXL,x
+        dex
+        bpl @l
+        jmp jam_panel
+@mm:    ldy #23                 ; -> MONO>MONO
+@b:     lda map_jmono,y
+        sta mapt,y
+        dey
+        bpl @b
+        lda inst+1              ; the bass's sound on the pair,
+        jsr set_preset
+        ldx #0                  ;  the chords' on ch3
+        lda inst+2
+        jsr lv_load
+        lda jlastlv+1
+        sta MIXL
+        lda jlastlv+2
+        sta MIXV
+        jmp jam_panel
+@x:     rts

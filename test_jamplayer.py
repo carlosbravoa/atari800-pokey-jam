@@ -147,6 +147,35 @@ if a.mono:
     check(mem[0x06FC] ^ before == 8, "mono: key 4 mutes the bass")
     m.x = 3
     call("jam_key")
+    # M: MONO>MONO -- bass on the lead's 16-bit pair, chords on ch3 (voice 0)
+    row20 = lambda: "".join(chr((c & 0x3F) + 32) for c in mem[0x4000 + 800 + 10:0x4000 + 800 + 29])
+    call("jam_mtoggle")
+    mapt2 = list(mem[L("mapt"):L("mapt") + 24])
+    check(mem[0x0673] == 0 and mapt2 == list(mem[L("map_jmono"):L("map_jmono") + 24]),
+          "mono: M switches to MONO>MONO (map_jmono)")
+    check(row20() == "M  MIX: MONO>MONO  ", f"mono: row 20 {row20()!r}")
+    pair, ch3 = set(), set()
+    f0 = frames
+    for f in range(900):
+        call("vbi")
+        if mem[0x0655] != 0xFF:
+            pr, mem[0x0655] = mem[0x0655], 0xFF
+            call("set_preset", pr)
+        call("jam_pump")
+        if 1 <= mem[0x060A + 1] <= 3:         # the lead engine's envelope: sounding
+            pair.add(mem[0x060A])
+        if 1 <= mem[VB + 2] <= 3:
+            ch3.add(mem[VB + 1])
+    e2 = engine.Engine(style, seed)
+    while e2.sent_frame < f0 + 1500:
+        e2.bar()
+    bass2 = {ev[3] for ev in e2.out if ev[1] == 0 and ev[2] == engine.BASS}
+    comp2 = {ev[3] for ev in e2.out if ev[1] == 0 and ev[2] == engine.COMP1}
+    check(pair and pair <= bass2, f"mono: MONO>MONO pair plays the bass ({len(pair)} pitches)")
+    check(ch3 and ch3 <= comp2, f"mono: MONO>MONO ch3 plays the chords ({len(ch3)} pitches)")
+    call("jam_mtoggle")
+    check(mem[0x0673] == 1 and list(mem[L("mapt"):L("mapt") + 24]) == list(mem[L("map_st"):L("map_st") + 24])
+          and row20() == "M  MIX: STEREO>MONO", "mono: M switches back to STEREO>MONO")
 bars = mem[EQ["JBARS"]] | mem[EQ["JBARS"] + 1] << 8
 print(f"      {bars} bars composed while playing; slowest pump {worst} cycles "
       f"({worst / 29868:.1f} frames)")

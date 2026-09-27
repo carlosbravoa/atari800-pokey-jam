@@ -43,6 +43,15 @@ machine the second POKEY's addresses fold onto the first, and its part --
 bass, chords, the second drum part -- is written last every frame, so it is
 what you hear. The panel then reads `MONO` and meters only `BASS HARM DRUM2`.
 
+`M` switches one-POKEY machines to the other mix, and back:
+
+- **STEREO>MONO** (the default): as above, a lighter drum part.
+- **MONO>MONO**: the bass on POKEY's 16-bit pair, the chords on the third
+  channel, and every drum, kick and snare included, on the fourth. Fuller
+  drums for the styles that live on their kick.
+
+Row 20 shows which one is on. Neither plays the lead.
+
 ## Keys
 
 | Key | Does |
@@ -50,7 +59,8 @@ what you hear. The panel then reads `MONO` and meters only `BASS HARM DRUM2`.
 | `<` `>` | previous / next style |
 | `RETURN` | a new tune in the current style |
 | `R` | RANDOM on/off: each new tune picks its own style (`RANDOM` shows inverse while on) |
-| `1`-`6` | mute / unmute a panel column: LEAD, LAYER/VOICE, DRUM, BASS, HARM, DRUM2 (one POKEY: `4`-`6` for BASS, HARM, DRUM2) |
+| `1`-`6` | mute / unmute a panel column: LEAD, LAYER/VOICE, DRUM, BASS, HARM, DRUM2 (one POKEY: `4`-`6` for BASS, HARM, DRUM2, or `1`-`3` for BASS, CHORD, DRUM in MONO>MONO) |
+| `M` | one POKEY: STEREO>MONO or MONO>MONO mix |
 | `L` or `TAB` | the style list |
 | `SPACE` | pause / resume |
 | `ESC` | stop |
