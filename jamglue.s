@@ -57,112 +57,10 @@ JVS      = $06FA        ; 2: VP snapshot in jam_pump
 .segment "CODE"                 ; (the player's MAIN: room since the scope went)
 
 ; the catalog: count, then per style title(16) ptr(2) pstep(2) min sec mode spare
-.assert 1 + NSTYLES * 24 <= $100, error, "the style list outgrew $0480-$057F"
-jam_catalog:
-        lda #0                  ; RANDOM starts off, every voice on
-        sta jrand
-        sta JMUTE
-        sta JMUTED
-        jsr jam_rflag
-        lda #NSTYLES
-        sta CAT
-        lda #<(CAT+1)
-        sta PT1
-        lda #>(CAT+1)
-        sta PT2
-        ldx #0
-@s:     stx PT3
-        txa
-        jsr style_name
-        ldy #0
-@t:     lda (GP),y
-        sta (PT1),y
-        iny
-        cpy #16
-        bne @t
-        lda #0                  ; stream pointer (unused)
-        sta (PT1),y
-        iny
-        sta (PT1),y
-        iny
-        lda #$FF                ; progress step: never
-        sta (PT1),y
-        iny
-        sta (PT1),y
-        iny
-        lda #0                  ; length 00:00 (endless)
-        sta (PT1),y
-        iny
-        sta (PT1),y
-        iny
-        lda #1                  ; stereo layout (the player folds for mono)
-        sta (PT1),y
-        iny
-        lda #0
-        sta (PT1),y
-        clc
-        lda PT1
-        adc #24
-        sta PT1
-        bcc @n
-        inc PT2
-@n:     ldx PT3
-        inx
-        cpx #NSTYLES
-        bne @s
-        rts
-
-style_name:                     ; A = style -> GP = its 16-char name
-        asl a
-        tay
-        lda styles,y
-        sta GP
-        lda styles+1,y
-        sta GP+1
-        ldy #ST_NAME
-        lda (GP),y
-        pha
-        iny
-        lda (GP),y
-        sta GP+1
-        pla
-        sta GP
-        rts
-
-; R: RANDOM on/off -- the music goes on; the next tune rolls the dice
-jam_rtoggle:
-        lda jrand
-        eor #1
-        sta jrand
-        ; fall through
-jam_rflag:                      ; "RANDOM" in the key line: inverse while on
-        ldx #5
-@c:     lda SCREEN+RNDROW*40+RNDCOL,x
-        and #$7F
-        ldy jrand
-        beq @o
-        ora #$80
-@o:     sta SCREEN+RNDROW*40+RNDCOL,x
-        dex
-        bpl @c
-        rts
-
-; the title and the style number follow the tune you hear
-jam_show:                       ; A = style
-        sta SONGN
-        sta JSTYLE
-        jsr style_name
-        ldy #15
-@t:     lda (GP),y
-        ora #$80
-        sta SCREEN+40+2,y
-        dey
-        bpl @t
-        jmp draw_songno
-
 ; song_load's stream setup: A = style -> a fresh performance in the ring
 jam_start:
         sta JSTYLE
+        jsr jam_detect          ; the machine may have changed
         lda RANDOM              ; a new seed every time
         sta JSEED
         sta JSEEDP
@@ -210,6 +108,7 @@ jam_commit:
 
 ; main loop: one more bar when the ring runs low; the title's timing
 jam_pump:
+        jsr jam_monocheck
         lda PLAYING
         bne @go
         rts
@@ -374,12 +273,22 @@ mutebit:    .byte 1,0,8,0,16,0,4,32,0,0,0,0,0,0,2,0,0,0,0,0,0
 jam_key:
         cpx #6
         bcs @x
-        lda colbit,x
+        jsr jcolbit
         eor JMUTE
         sta JMUTE
         jmp jam_labels
 @x:     rts
 colbit:     .byte 1,2,4,8,16,32
+colbit_mo:  .byte 1,8,4,0,0,0           ; mono: BASS (lead cmds) CHORD (voice 0) DRUM
+
+; A = the JMUTE bit of panel column X (X kept)
+jcolbit:
+        lda STEREO
+        beq @m
+        lda colbit,x
+        rts
+@m:     lda colbit_mo,x
+        rts
 
 ; the labels above the columns: inverse while muted (also redone each pump:
 ; the panel reprints LAYER/VOICE)
@@ -391,7 +300,7 @@ jam_labels:
         tay
         lda labw,x
         sta PT4
-        lda colbit,x
+        jsr jcolbit
         and JMUTE
         sta PT3
 @l:     lda SCREEN+14*40,y
@@ -439,4 +348,181 @@ jam_release:
         bcc @x
         ldx #VBS
         jsr lv_off
+@x:     rts
+
+; ---------------------------------------------------------------------------
+.segment "JAMCODE"
+; one POKEY: the lead's 16-bit pair plays the BASS (an 8-bit channel can't
+; reach bass notes in tune), ch3 the comping, ch4 every drum. The lead and
+; voice 4 are dropped: the backing band is what sounds best. psq op/track ->
+; command, index = op*4 + track (tracks: lead, bass, comp, voice 4)
+map_jmono:
+        .byte $FF,0,2,$FF, $FF,1,3,$FF, 6,6,6,6, $FF,8,9,$FF
+        .byte $FF,$FF,$FF,$FF, $FF,17,18,$FF
+
+; ---------------------------------------------------------------------------
+; the style list, title, RANDOM flag, panel mode (JAMCODE: the MAIN is full)
+.segment "JAMCODE"
+.assert 1 + NSTYLES * 24 <= $100, error, "the style list outgrew $0480-$057F"
+jam_catalog:
+        jsr jam_blank           ; (the panel is up: mono shows 3 meters)
+        lda #0                  ; RANDOM starts off, every voice on
+        sta jrand
+        sta JMUTE
+        sta JMUTED
+        jsr jam_rflag
+        lda #NSTYLES
+        sta CAT
+        lda #<(CAT+1)
+        sta PT1
+        lda #>(CAT+1)
+        sta PT2
+        ldx #0
+@s:     stx PT3
+        txa
+        jsr style_name
+        ldy #0
+@t:     lda (GP),y
+        sta (PT1),y
+        iny
+        cpy #16
+        bne @t
+        lda #0                  ; stream pointer (unused)
+        sta (PT1),y
+        iny
+        sta (PT1),y
+        iny
+        lda #$FF                ; progress step: never
+        sta (PT1),y
+        iny
+        sta (PT1),y
+        iny
+        lda #0                  ; length 00:00 (endless)
+        sta (PT1),y
+        iny
+        sta (PT1),y
+        iny
+        lda #1                  ; stereo layout (the player folds for mono)
+        sta (PT1),y
+        iny
+        lda #0
+        sta (PT1),y
+        clc
+        lda PT1
+        adc #24
+        sta PT1
+        bcc @n
+        inc PT2
+@n:     ldx PT3
+        inx
+        cpx #NSTYLES
+        bne @s
+        rts
+
+style_name:                     ; A = style -> GP = its 16-char name
+        asl a
+        tay
+        lda styles,y
+        sta GP
+        lda styles+1,y
+        sta GP+1
+        ldy #ST_NAME
+        lda (GP),y
+        pha
+        iny
+        lda (GP),y
+        sta GP+1
+        pla
+        sta GP
+        rts
+
+; R: RANDOM on/off -- the music goes on; the next tune rolls the dice
+jam_rtoggle:
+        lda jrand
+        eor #1
+        sta jrand
+        ; fall through
+jam_rflag:                      ; "RANDOM" in the key line: inverse while on
+        ldx #5
+@c:     lda SCREEN+RNDROW*40+RNDCOL,x
+        and #$7F
+        ldy jrand
+        beq @o
+        ora #$80
+@o:     sta SCREEN+RNDROW*40+RNDCOL,x
+        dex
+        bpl @c
+        rts
+
+; the title and the style number follow the tune you hear
+jam_show:                       ; A = style
+        sta SONGN
+        sta JSTYLE
+        jsr style_name
+        ldy #15
+@t:     lda (GP),y
+        ora #$80
+        sta SCREEN+40+2,y
+        dey
+        bpl @t
+        jmp draw_songno
+
+
+.segment "CODE"
+; the machine: POKEY JAM re-checks for a second POKEY at every new jam or
+; style (jam_start) and, while a key is held, sees stereo switched off (POKEY2
+; has no keyboard: if $D21F follows POKEY1's key bit, the chips are mirrored)
+jam_detect:                     ; jam_start: the panel follows a change
+        lda STEREO
+        pha
+        jsr detect_stereo
+        pla
+        cmp STEREO
+        beq @x
+        jmp jam_panel
+@x:     rts
+
+jam_monocheck:                  ; main loop: stereo gone while playing?
+        lda STEREO
+        beq @x
+        lda SKSTAT
+        and #4
+        bne @x                  ; no key held: nothing to compare
+        lda SKSTAT+$10
+        and #4
+        bne @x                  ; POKEY2's key bit stays up: really stereo
+        lda SONGN               ; mono now: a fresh jam in mono
+        jmp song_load
+@x:     rts
+
+jam_panel:                      ; redraw the panel for STEREO / MONO
+        lda #0
+        ldx #39
+@c:     sta SCREEN+14*40,x      ; the column labels
+        dex
+        bpl @c
+        ldx #5
+@s:     sta SCREEN+2*40+16,x    ; STEREO / MONO
+        dex
+        bpl @s
+        jsr draw_static
+        jsr jam_rflag
+        jsr jam_labels
+        ; fall through
+jam_blank:                      ; mono: no meters where nothing can sound
+        lda STEREO
+        bne @x
+        ldx #19
+        lda #0
+@b:     sta SCREEN+5*40+20,x
+        sta SCREEN+6*40+20,x
+        sta SCREEN+7*40+20,x
+        sta SCREEN+8*40+20,x
+        sta SCREEN+9*40+20,x
+        sta SCREEN+10*40+20,x
+        sta SCREEN+11*40+20,x
+        sta SCREEN+12*40+20,x
+        sta SCREEN+13*40+20,x
+        dex
+        bpl @b
 @x:     rts

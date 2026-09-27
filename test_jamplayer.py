@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """py65: POKEY JAM as a whole (player front-end + composer), no Atari.
 
-    python3 test_jamplayer.py [--seconds 120] [--style N]
+    python3 test_jamplayer.py [--seconds 120] [--style N] [--mono]
 
 Boots build/jam.xex, loads a style and runs VBI + main-loop passes frame by
 frame. Checks: the ring never starves, the sequencer plays exactly the
 events engine.py composes for the same seed, and how long the composer
-holds up a main-loop pass.
+holds up a main-loop pass. --mono runs it on a one-POKEY machine: the bass
+must sound on the lead's 16-bit pair, the comping on ch3, and nothing from
+the lead, voice 4 or POKEY2.
 """
 import argparse
 import os
@@ -22,6 +24,7 @@ import styles  # noqa: E402
 ap = argparse.ArgumentParser()
 ap.add_argument("--seconds", type=int, default=120)
 ap.add_argument("--style", type=int, default=0)
+ap.add_argument("--mono", action="store_true")
 a = ap.parse_args()
 
 lbl = {}
@@ -86,7 +89,13 @@ while m.pc != L("mainloop"):
     m.step()
     n += 1
     assert n < 4_000_000, "start never reached mainloop"
-mem[0x0673] = 1
+mem[0x0673] = 0 if a.mono else 1
+# POKEY JAM re-detects the machine at every song load; py65's RANDOM is a
+# constant (it would always look mono), so detection answers the mode tested
+d = L("detect_stereo")
+mem[d:d + 6] = [0xA9, 0 if a.mono else 1, 0x8D, 0x73, 0x06, 0x60]   # lda #m / sta STEREO / rts
+# (its writes to SKCTL land on SKSTAT in py65: no key is held, on either chip)
+mem[0xD20F] = mem[0xD21F] = 0xFF
 call("draw_static")
 call("song_load", a.style)
 seed = mem[0x06EB] | mem[0x06EC] << 8
@@ -94,21 +103,63 @@ style = (list(styles.STYLES) + ["RANDOM"])[a.style]
 print(f"style {style}, seed {seed:#06x}")
 
 frames = a.seconds * 60
+NOTE, VB, SH = 0x060A, 0x0B40, 0x0B78
+seen = dict(lead=set(), lpre=set(), v0=set(), vpre=set())
+loud, p2 = [0, 0, 0], False
+mapt = list(mem[L("mapt"):L("mapt") + 24])
+if a.mono:
+    check(mapt == list(mem[L("map_jmono"):L("map_jmono") + 24]), "mono: the JAM mono map is loaded")
 sevn_prev, executed, starved, worst = mem[EQ["SEVN"]], 0, 0, 0
 for f in range(frames):
     call("vbi")
     executed += (mem[EQ["SEVN"]] - sevn_prev) & 255
     sevn_prev = mem[EQ["SEVN"]]
     starved += mem[EQ["JSTARVE"]]
+    if mem[0x0655] != 0xFF:          # PRESREQ: the main loop loads the lead's sound
+        pr, mem[0x0655] = mem[0x0655], 0xFF
+        call("set_preset", pr)
     worst = max(worst, call("jam_pump"))
+    if a.mono:
+        if 1 <= mem[NOTE + 1] <= 3:
+            seen["lead"].add(mem[NOTE])
+            seen["lpre"].add(mem[0x0600])
+            loud[0] |= mem[SH + 3] & 15
+        if 1 <= mem[VB + 2] <= 3:
+            seen["v0"].add(mem[VB + 1])
+            seen["vpre"].add(mem[VB])
+        loud[1] |= mem[SH + 5] & 15
+        loud[2] |= mem[SH + 7] & 15
+        p2 |= any(mem[SH + 0x10 + r] & 15 for r in (1, 3, 5, 7))
 
 e = engine.Engine(style, seed)
 while e.sent_frame < frames + 600:
     e.bar()
-want = sum(1 for ev in e.out if ev[0] < frames - 1)
+want = sum(1 for ev in e.out if ev[0] < frames - 1 and (ev[1] >= 14 or mapt[ev[1] * 4 + (ev[2] & 3)] != 0xFF))
 check(starved == 0, f"the ring never starved ({starved} starved frames)")
 check(abs(executed - want) <= 8, f"sequencer played {executed} events, engine.py composed {want} "
       f"before frame {frames}")
+if a.mono:
+    P = engine.PRESETS
+    bass = {ev[3] for ev in e.out if ev[1] == 0 and ev[2] == engine.BASS}
+    comp = {ev[3] for ev in e.out if ev[1] == 0 and ev[2] == engine.COMP1}
+    st = styles.STYLES[style]
+    check(seen["lead"] and seen["lead"] <= bass,
+          f"mono: the 16-bit pair plays only bass notes ({len(seen['lead'])} pitches)")
+    check(seen["v0"] and seen["v0"] <= comp,
+          f"mono: ch3 plays only comping notes ({len(seen['v0'])} pitches)")
+    check({P[i] for i in seen["lpre"]} <= set(st["bass"]["presets"]),
+          f"mono: bass sound {sorted(P[i] for i in seen['lpre'])}")
+    check({P[i] for i in seen["vpre"]} <= set(st["comp"]["presets"]),
+          f"mono: comping sound {sorted(P[i] for i in seen['vpre'])}")
+    drums = any(ev[1] == 2 and ev[0] < frames - 1 for ev in e.out)
+    check(loud[0] and loud[1] and (loud[2] or not drums) and not p2, f"mono: ch1+2, ch3, ch4 sound; POKEY2 silent (vol {loud}, p2 {p2})")
+    for x, want_bit in ((1, 8), (3, 0)):
+        before = mem[0x06FC]
+        m.x = x
+        call("jam_key")
+        check(mem[0x06FC] ^ before == want_bit, f"mono: key {x + 1} toggles mute bit {want_bit}")
+        m.x = x
+        call("jam_key")
 bars = mem[EQ["JBARS"]] | mem[EQ["JBARS"] + 1] << 8
 print(f"      {bars} bars composed while playing; slowest pump {worst} cycles "
       f"({worst / 29868:.1f} frames)")

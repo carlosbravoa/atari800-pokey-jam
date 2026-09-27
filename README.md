@@ -33,8 +33,14 @@ as a binary file with no DOS in memory:
   NTSC 800XL or 130XE with 64 KB.
 - On a real Atari: use your SD drive's or FujiNet's own `.xex` loader.
 
-It runs on one POKEY. With a second POKEY (a stereo upgrade, or the stereo
-option in the emulator) the parts spread over both chips.
+With two POKEYs (a stereo upgrade, or the stereo option in the emulator)
+you hear the whole band: lead, bass, chords, a fourth voice for trades and
+answers, and drums on both chips.
+
+With one POKEY it plays the backing band: bass, chords and drums, with no
+lead. POKEY's only in-tune bass channel is its 16-bit pair, so the bass
+gets it, and the chords take the third channel. The panel then reads
+`BASS CHORD DRUM`.
 
 ## Keys
 
@@ -43,14 +49,15 @@ option in the emulator) the parts spread over both chips.
 | `<` `>` | previous / next style |
 | `RETURN` | a new tune in the current style |
 | `R` | RANDOM on/off: each new tune picks its own style (`RANDOM` shows inverse while on) |
-| `1`-`6` | mute / unmute a panel column: LEAD, LAYER/VOICE, DRUM, BASS, HARM, DRUM2 |
+| `1`-`6` | mute / unmute a panel column: LEAD, LAYER/VOICE, DRUM, BASS, HARM, DRUM2 (one POKEY: `1`-`3` for BASS, CHORD, DRUM) |
 | `L` or `TAB` | the style list |
 | `SPACE` | pause / resume |
 | `ESC` | stop |
 
 **Tip: for background music, press `1` to mute the lead, then `R` for
 RANDOM, and leave it running.** The backing keeps going on its own and moves
-from style to style, one tune at a time.
+from style to style, one tune at a time. (With one POKEY there's no lead
+to mute: just press `R`.)
 
 ## Build from source
 
@@ -66,6 +73,7 @@ Python 3 with `py65`.
 make                        # build/jam.xex (cc65 in ~/.local/bin, or: make CA65=ca65 LD65=ld65)
 python3 test_jam.py         # the 6502 composer vs the Python model, byte for byte
 python3 test_jamplayer.py   # the composer and the player together, no starved frames
+python3 test_jamplayer.py --mono --style N   # one POKEY: what each channel plays
 ```
 
 - `styles.py` defines the styles: riffs, chord forms, bass, comping and
