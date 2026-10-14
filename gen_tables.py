@@ -28,7 +28,7 @@ import styles as S
 HERE = os.path.dirname(os.path.abspath(__file__))
 BCODE = {"R": 0x80, "5": 0x81, "L": 0x82, "8": 0x83, "3": 0x84, "7": 0x85, "A": 0x86, "S": 0x87}
 WHAT = {"2": 0, "1": 1, "arp": 2}
-VOICING = {"triad": 0, "guide": 1, "power": 2}
+VOICING = {"triad": 0, "guide": 1, "power": 2, "shell": 3}
 
 # style record: byte fields, then word fields
 BYTES = ["beat_lo", "beat_hi", "swing", "lead_lo", "lead_hi", "lead_gap", "snap",

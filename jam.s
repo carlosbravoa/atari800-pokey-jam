@@ -39,7 +39,7 @@ ENDCH    = 71               ; chord slot: the final chord
 NOSLOT   = $FF
 BUZZHI   = 57               ; buzzy lead waves: top note (psq)
 V8LO     = 24               ; 8-bit 64 kHz voices: in tune up to A4
-V8HI     = 45
+V8HI     = 40               ; ... usable up to E4; fix8 also skips C#4/D#4
 
 ; ---- zero page (main thread; $B0-$DF) ------------------------------------
 JWP      = $B0              ; 2: ring write pointer
@@ -152,7 +152,7 @@ hletter: .res 1
 hu0:     .res 2             ; U0
 hfirst:  .res 2             ; serial of the unit's first note
 hn:      .res 1             ; records used
-HMAX     = 180              ; theme records (a letter is ~40 notes; overflow drops)
+HMAX     = 160              ; theme records (a letter is ~40 notes; overflow drops)
 hr_t0:   .res HMAX          ; tick in unit
 hr_t1:   .res HMAX
 hr_d0:   .res HMAX
@@ -292,6 +292,7 @@ rfirst:  .res 1             ; the riff's first pitched degree
 nd_i:    .res 1             ; chord-tone nudge: offset index
 quiet:   .res 1             ; a solo: its first and last bar are silent (0/1)
 phq:     .res 2             ; new_phrase: t div 48
+f8n:     .res 1             ; fix8
 fb:      .res 49            ; frames from bar start per tick
 plan:    .res 16
 qsel:    .res 256
@@ -1923,15 +1924,19 @@ end_bar:
         jsr note
         ldy #ST_COMP_LO
         jsr rbase
+        lda NB
+        sta NLO
         lda #2
         ldx #ENDCH
         jsr degree
+        jsr fix8
         ldx #COMP1
         stx TR
         jsr note
         lda #4
         ldx #ENDCH
         jsr degree
+        jsr fix8
         ldx #COMP2
         stx TR
         jsr note
@@ -2004,6 +2009,32 @@ rbase:                          ; NB = biased range low at (STYP),Y
         adc #BIAS
         sta NB
         rts
+
+; fix8: A = a held 8-bit comping note (biased), NLO = the range low -> A: at
+; most E4, and not C#4/D#4 (5-11 cents off on the 64 kHz channel; the octave
+; below, down to the C3 floor, is within 4 cents)
+fix8:
+        sta f8n
+@w:     lda f8n
+        cmp #V8HI+BIAS+1
+        bcc @b
+        sec
+        sbc #12
+        cmp NLO
+        bcc @b                  ; can't drop within the range: keep
+        sta f8n
+        jmp @w
+@b:     lda f8n
+        cmp #37+BIAS
+        beq @bad
+        cmp #39+BIAS
+        bne @x
+@bad:   sec
+        sbc #12
+        cmp #V8LO+BIAS
+        bcs @x
+        lda f8n
+@x:     rts
 
 lead_range:                     ; NLO/NHI = the lead's range (biased)
         ldy #ST_LEAD_LO
@@ -3340,12 +3371,7 @@ head_bar:
         lda T8
         jsr snap
         sta T8
-@lg:    lda TD+1                ; long notes stay in its scale
-        bne @lc
-        lda TD
-        cmp #7
-        bcc @nsn
-@lc:    ldx T5
+@lg:    ldx T5                  ; off its scale: snap (no written approach here)
         lda T8
         jsr allowed
         bne @nsn
@@ -3886,8 +3912,21 @@ comp_hit:
         sta T1
         jmp @vo
 @nt:    cmp #2
+        beq @pow
+        cmp #3
         bne @tri
-        lda #0
+        ldy #0                  ; shell: 5th and 7th (no 3rd: a blues
+        lda (GP3),y             ;  soloist's b3 is free); triads: root, 5th
+        cmp #4
+        bcc @pow
+        ldy #3
+        lda (GP3),y
+        sta T0
+        ldy #4
+        lda (GP3),y
+        sta T1
+        jmp @vo
+@pow:   lda #0
         sta T0
         lda #7
         sta T1
@@ -3968,6 +4007,12 @@ comp_hit:
         lda #1
         sta cvld
         sta cvld+1
+        lda vs0                 ; both comping voices are 8-bit
+        jsr fix8
+        sta vs0
+        lda vs1
+        jsr fix8
+        sta vs1
         ldy #ST_COMP_GAP
         lda (STYP),y
         sta TG
@@ -4019,7 +4064,7 @@ comp_hit:
         lda vs0                 ; the third step: an octave up if it fits
         clc
         adc #12
-        cmp NHI
+        cmp #V8HI+BIAS
         beq @au
         bcc @au
         lda vs0
@@ -4917,12 +4962,7 @@ quote_note:
         sta TD
         lda qdd+1
         sta TD+1
-@ln:    lda TD+1                ; no long notes off the scale
-        bne @lc
-        lda TD
-        cmp #7
-        bcc @sc
-@lc:    ldx qch
+@ln:    ldx qch                 ; off its scale: snap
         lda T8
         jsr allowed
         bne @sc

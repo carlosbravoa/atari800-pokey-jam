@@ -119,7 +119,17 @@ STYLE_NAMES = list(S.STYLES)
 COMPILED = [compile_style(S.STYLES[k]) for k in STYLE_NAMES]
 BUZZY = {PRESETS.index("BASS"), PRESETS.index("SYNTH")}   # poly4 lead waves
 BUZZ_HI = 57            # buzz is within 12 cents up to A5, ~30 above
-V8_LO, V8_HI = 24, 45   # 8-bit 64 kHz voices: within 3 cents up to A4
+V8_LO, V8_HI = 24, 40   # 8-bit 64 kHz voices: usable up to E4 ...
+BAD8 = (37, 39)         # ... except C#4 and D#4 (B3, 5.7 cents, has no octave below)
+
+
+def fix8(n, lo):
+    """a held 8-bit comping note: at most E4, not C#4/D#4 (5-11 cents off)"""
+    while n > V8_HI and n - 12 >= lo:
+        n -= 12
+    if n in BAD8 and n - 12 >= V8_LO:       # (below the style's low is fine)
+        n -= 12
+    return n
 # intensity 0-15 per bar: a solo builds to a peak ~2/3 through, then settles
 ARC = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15, 15, 14, 13, 12]
 # the lead's volume cap for an intensity (Ballblazer's swell)
@@ -432,8 +442,8 @@ class Engine:
         prev = self.lead_prev if self.lead_prev is not None else L_lo
         self.note(LEAD, t, BAR, nearest(ch.degree(0, L_lo), prev, L_lo, L_hi), 4)
         self.note(BASS, t, BAR, ch.degree(0, B_lo), 4)
-        self.note(COMP1, t, BAR, ch.degree(2, C_lo), 4)
-        self.note(COMP2, t, BAR, ch.degree(4, C_lo), 4)
+        self.note(COMP1, t, BAR, fix8(ch.degree(2, C_lo), C_lo), 4)
+        self.note(COMP2, t, BAR, fix8(ch.degree(4, C_lo), C_lo), 4)
         self.drum(t, 7)
         self.drum(t, 0)
         for k, lv in enumerate((12, 9, 6)):     # the last chord fades away
@@ -628,7 +638,7 @@ class Engine:
             if L["snap"] and tq % (24 if L["snap"] == 1 else TPB) == 0:
                 n = snap(n, ch)
             d = min(dd, self.p_stop - tq)
-            if d > 6 and not self.allowed(n, ch):
+            if not self.allowed(n, ch):
                 n = snap(n, ch)
             n = nearest(n, n, lo, hi)
             d = self.fits_until(tq, d, n)
@@ -680,7 +690,7 @@ class Engine:
                     ch = self.chord_at(t)
                     if not self.key_chord and tk % TPB == 0:
                         nn = snap(nn, ch)
-                    if dd > 6 and not self.allowed(nn, ch):
+                    if not self.allowed(nn, ch):
                         nn = snap(nn, ch)                 # repeated over other chords
                     dd = self.fits_until(t, dd, nn)
                     self.set_level(t, LEAD, min(LEADMAX, self.dyn + (2 if t % 24 == 0 else 0)))
@@ -768,6 +778,8 @@ class Engine:
                 pair = [tones[1], tones[3]]
             elif C["voicing"] == "power":
                 pair = [0, 7]
+            elif C["voicing"] == "shell":             # no 3rd: a blues soloist's
+                pair = [tones[2], tones[3]] if len(tones) >= 4 else [0, 7]   # b3 is free
             else:
                 pair = [tones[1], tones[2]]
             vs = []
@@ -779,9 +791,10 @@ class Engine:
                 vs[1] += 12 if vs[1] + 12 <= hi else -12
             vs.sort()
             self.comp_last = vs[:]
+            vs = [fix8(vs[0], lo), fix8(vs[1], lo)]       # both voices are 8-bit
             if what == "arp":
                 up = vs[0] + 12                           # 8-bit voice: stay low
-                if up > hi:
+                if up > V8_HI:
                     up = vs[0] - 12 if vs[0] - 12 >= lo else vs[1]
                 seq = [vs[0], vs[1], up, vs[1]]
                 for k in range(dur // 3):

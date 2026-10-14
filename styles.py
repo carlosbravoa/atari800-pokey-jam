@@ -306,7 +306,7 @@ STYLES = {
                             "shuffle": [[(0, 6, "R"), (6, 6, "R"), (12, 6, "8"), (18, 6, "8"),
                                          (24, 6, "5"), (30, 6, "5"), (36, 6, "8"), (42, 6, "8")],
                                         [(0, 12, "R"), (12, 12, 4), (24, 12, 7), (36, 12, 9)]]}),
-        comp=dict(range=(28, 43), presets=["PIANO", "ORGAN"], voicing="guide", gap=2,
+        comp=dict(range=(28, 43), presets=["PIANO", "ORGAN"], voicing="shell", gap=2,
                   patterns={"stabs": [[(6, 6, "2"), (18, 6, "2"), (30, 6, "2"), (42, 6, "2")],
                                       [(0, 9, "2"), (12, 9, "2"), (24, 9, "2"), (36, 9, "2")],
                                       [(18, 30, "2")]],
@@ -582,7 +582,7 @@ STYLES["GRID"] = dict(
     bass=dict(range=(7, 26), presets=["BASS"], gap=1, change=0.2,
               patterns={"home": [[(0, 4, 0), (6, 4, 7), (18, 4, 0), (30, 4, 7), (36, 5, 8), (42, 5, 15)],
                                  [(0, 4, 0), (6, 4, 7), (18, 4, 0), (30, 4, 7), (36, 5, 5), (42, 5, 3)]]}),
-    comp=dict(range=(26, 43), presets=["ORGAN", "PIANO"], voicing="guide", gap=1,
+    comp=dict(range=(26, 43), presets=["ORGAN", "PIANO"], voicing="shell", gap=1,
               patterns={"stab": [[(12, 8, "2"), (42, 4, "1")], [(12, 8, "2")],
                                  [(12, 6, "2"), (36, 6, "2")]]}),
     drums=dict(
