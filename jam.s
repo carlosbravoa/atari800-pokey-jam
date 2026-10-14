@@ -152,7 +152,7 @@ hletter: .res 1
 hu0:     .res 2             ; U0
 hfirst:  .res 2             ; serial of the unit's first note
 hn:      .res 1             ; records used
-HMAX     = 200
+HMAX     = 180              ; theme records (a letter is ~40 notes; overflow drops)
 hr_t0:   .res HMAX          ; tick in unit
 hr_t1:   .res HMAX
 hr_d0:   .res HMAX
@@ -270,9 +270,6 @@ qdd:     .res 2
 qch:     .res 1
 pbv:     .res 1
 dboost:  .res 1             ; drum odds shift at this intensity (signed)
-hookf:   .res 1             ; start_riff: the hook was chosen (no nudging)
-rfirst:  .res 1             ; the riff's first pitched degree
-nd_i:    .res 1             ; chord-tone nudge: offset index
 
 .segment "JAMBSS5"             ; $0700-$08FF: the loader's while loading only
 qk:      .res 256
@@ -290,6 +287,11 @@ ld_s:    .res 8             ; per drum: its last step ($FF none), channel
 ld_c:    .res 8
 
 .segment "JAMBSS2"             ; flush's sort buffers (low RAM)
+hookf:   .res 1             ; start_riff: the hook was chosen (no nudging)
+rfirst:  .res 1             ; the riff's first pitched degree
+nd_i:    .res 1             ; chord-tone nudge: offset index
+quiet:   .res 1             ; a solo: its first and last bar are silent (0/1)
+phq:     .res 2             ; new_phrase: t div 48
 fb:      .res 49            ; frames from bar start per tick
 plan:    .res 16
 qsel:    .res 256
@@ -1722,10 +1724,26 @@ next_section:
         jsr preset_now
         lda npre
         jsr set_lead_range
-@nl:    lda tick                ; the lead machine restarts
+@nl:    lda #0                  ; a solo (lead, not the theme, 3+ bars):
+        sta quiet               ;  its first and last bar are silent
+        lda sflags
+        and #F_LEAD|F_HEAD
+        cmp #F_LEAD
+        bne @nq
+        lda nbars
+        cmp #3
+        bcc @nq
+        inc quiet
+@nq:    lda quiet               ; the lead machine restarts (a solo: after a bar)
+        ldx #BARL
+        jsr mul8
+        lda ML
+        clc
+        adc tick
         sta lt
         sta p_end
         lda tick+1
+        adc #0
         sta lt+1
         sta p_end+1
         lda #0
@@ -1778,6 +1796,8 @@ jam_bar:
         adc #0
         sta bnext+1
         lda nbars
+        sec
+        sbc quiet
         ldx #BARL
         jsr mul8
         sta s_end+1
@@ -2127,6 +2147,10 @@ new_phrase:
         sta DVD+1
         lda #BARL
         jsr div16
+        lda DVD
+        sta phq
+        lda DVD+1
+        sta phq+1
         clc
         lda DVD
         adc T8
@@ -2157,7 +2181,10 @@ new_phrase:
         sta p_end
         lda s_end+1
         sta p_end+1
-@e:     ldy #SE_BREATH          ; p_stop = max(t + 6, p_end - breath)
+@e:     lda sflags
+        and #F_HEAD
+        beq @solo
+        ldy #SE_BREATH          ; the theme: p_stop = max(t + 6, p_end - breath)
         lda (SECP),y
         sta GP
         iny
@@ -2172,7 +2199,55 @@ new_phrase:
         lda p_end+1
         sbc #0
         sta p_stop+1
+        jmp @mx
+@solo:  lda pbv                 ; a solo phrase talks, then listens: rest =
+        lsr a                   ;  pick(pb/2, pb/2, max(1, pb/2 - 1)) bars
+        sta T8
+        lda #3
+        jsr below
+        cmp #2
+        bne @rk
+        lda T8
+        sec
+        sbc #1
+        bne @rs
+        lda #1
+        bne @rs
+@rk:    lda T8
+@rs:    sta T7                  ; rest
+        lda pbv                 ; p_stop = min(p_end, (q + pb - rest) * 48)
+        sec
+        sbc T7
         clc
+        adc phq
+        sta DVD
+        lda phq+1
+        adc #0
+        sta DVD+1
+        lda DVD
+        ldx #BARL
+        jsr mul8
+        sta p_stop+1
+        lda ML
+        sta p_stop
+        lda DVD+1
+        beq @ps
+        ldx #BARL
+        jsr mul8
+        lda ML
+        clc
+        adc p_stop+1
+        sta p_stop+1
+@ps:    lda p_end
+        cmp p_stop
+        lda p_end+1
+        sbc p_stop+1
+        bcs @mx
+        lda p_end
+        sta p_stop
+        lda p_end+1
+        sta p_stop+1
+@mx:    clc                     ; ... and at least t + 6
         lda lt
         adc #6
         sta tmp16
@@ -4465,9 +4540,9 @@ accent:                         ; TK -> A = min(15, dyn + 2 on beats 1 and 3)
         lda dyn
         clc
         adc #2
-        cmp #16
+        cmp #13                 ; the lead peaks at 12: a guest in the band
         bcc @x
-        lda #15
+        lda #12
         rts
 @n:     lda dyn
 @x:     rts
@@ -4898,7 +4973,7 @@ quote_note:
 sc_ionian:  .byte 7,0,2,4,5,7,9,11
 kc_tones:   .byte 3,0,4,7
 arc16:      .byte 5,6,7,8,9,10,11,12,13,14,15,15,15,14,13,12   ; a solo's build
-lvl16:      .byte 8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15  ; swell cap per I
+lvl16:      .byte 7,7,8,8,8,9,9,10,10,10,11,11,11,12,12,12     ; swell cap per I
 fades:      .byte 12,9,6
 bitlo:      .byte 1,2,4,8,16,32,64,128,0,0,0,0
 bithi:      .byte 0,0,0,0,0,0,0,0,1,2,4,8

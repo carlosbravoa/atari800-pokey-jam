@@ -658,7 +658,7 @@ STYLES["BOSSA"] = dict(
         dict(name="ORFEU", bars="i7 | i7 | iv7 | iv7 | iim7b5 | V7 | i7 | V7", plan="A", unit=8),
     ],
     riffs=BOSSA_RIFFS,
-    mix=[13, 12, 10, 10],
+    mix=[11, 12, 10, 10],
     lead=dict(range=(38, 58), presets=["FLUTE", "PIANO", "BELL"], gap=2, snap=2,
               phrase=[4], breath=[12, 24]),
     trade_preset=["PIANO", "BELL"],

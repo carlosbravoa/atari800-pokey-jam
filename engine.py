@@ -97,6 +97,9 @@ def compile_style(st):
         lead, head = bool(s.get("lead")), k.startswith("head")
         # intensity: flat energy, or a solo's build (see ARC)
         d["build"] = bool(s.get("build", lead and not head and not s.get("trade")))
+        if lead and not head:                   # solos: longer notes, fewer runs
+            d["slow"] = max(d.get("slow", 0), prob(0.25))
+            d["fast"] = min(d.get("fast", 0), prob(0.08))
         d["energy"] = s.get("energy", 11 if head else 10 if lead else 9)
         d["quote"] = prob(s.get("quote", 0.2 if d["build"] else 0))
         d["resp"] = prob(s.get("resp", 0.2 if d["build"] else 0))
@@ -120,7 +123,8 @@ V8_LO, V8_HI = 24, 45   # 8-bit 64 kHz voices: within 3 cents up to A4
 # intensity 0-15 per bar: a solo builds to a peak ~2/3 through, then settles
 ARC = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15, 15, 14, 13, 12]
 # the lead's volume cap for an intensity (Ballblazer's swell)
-LVL = [8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15]
+LVL = [7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12, 12]
+LEADMAX = 12            # with the accent: a guest in the band, not on top of it
 
 
 # ---- chords as the 6502 sees them ------------------------------------------
@@ -254,14 +258,15 @@ class Engine:
         self.sbar = 0
         self.off = (self.flen - self.nbars % self.flen) % self.flen if cfg.get("from_end") else 0
         self.sec = name
+        self.is_head = name.startswith("head")
+        self.quiet = 1 if cfg.get("lead") and not self.is_head and self.nbars >= 3 else 0
         if cfg.get("lead_preset"):
             p = rng.pick(st["lead"]["presets"])
             self.ctl(self.tick, psq.PRESET, LEAD, p)
             self.set_lead_range(p)
-        self.is_head = name.startswith("head")
         self.trade = bool(cfg.get("trade")) and bool(st["trade_preset"])
-        # the lead's machine restarts at every section
-        self.lt = self.tick          # next lead tick
+        # the lead's machine restarts at every section (a solo: after a bar)
+        self.lt = self.tick + self.quiet * BAR     # next lead tick
         self.p_end = self.lt         # no phrase yet
         self.riff = None
         self.last_riff, self.last_tr = None, 0
@@ -313,7 +318,7 @@ class Engine:
         if self.resp or (self.trade and ((t - self.sec0) // (4 * BAR)) % 2 == 1):
             track = COMP2                         # 8-bit voice: an octave down
             pn = nearest(n - 12, n - 12, V8_LO, V8_HI)
-        self.set_level(t, track, min(15, self.dyn + (2 if t % 24 == 0 else 0)))
+        self.set_level(t, track, min(LEADMAX, self.dyn + (2 if t % 24 == 0 else 0)))
         nt = self.note(track, t, d, pn, L["gap"])
         self.lnotes.append(nt)
         if self.unit_rec is not None:
@@ -396,7 +401,7 @@ class Engine:
                 if self.is_head:
                     self.head_bar(B0)
                 else:
-                    self.lead_bar(B0, B0 + BAR, self.sec0 + self.nbars * BAR)
+                    self.lead_bar(B0, B0 + BAR, self.sec0 + (self.nbars - self.quiet) * BAR)
             if cfg.get("bass"):
                 self.bass_bar(B0, cfg["bass"])
             if cfg.get("comp") and not self.trade:
@@ -451,8 +456,13 @@ class Engine:
                     return
                 pb = rng.pick(cfg.get("phrase", L["phrase"]))
                 self.p_end = min(s_end, (t // BAR + pb) * BAR)
-                breath = rng.pick(cfg.get("breath", L["breath"]))
-                self.p_stop = max(t + 6, self.p_end - breath)
+                if self.is_head:
+                    breath = rng.pick(cfg.get("breath", L["breath"]))
+                    self.p_stop = max(t + 6, self.p_end - breath)
+                else:                              # a solo phrase talks, then
+                    rest = rng.pick([pb // 2, pb // 2, max(1, pb // 2 - 1)])
+                    self.p_stop = max(t + 6, min(self.p_end,     # listens
+                                                 (t // BAR + pb - rest) * BAR))
                 self.riff = None
                 self.ph_first = len(self.lnotes)
                 self.phrase_kind(t, pb)
@@ -673,7 +683,7 @@ class Engine:
                     if dd > 6 and not self.allowed(nn, ch):
                         nn = snap(nn, ch)                 # repeated over other chords
                     dd = self.fits_until(t, dd, nn)
-                    self.set_level(t, LEAD, min(15, self.dyn + (2 if t % 24 == 0 else 0)))
+                    self.set_level(t, LEAD, min(LEADMAX, self.dyn + (2 if t % 24 == 0 else 0)))
                     self.note(LEAD, t, dd, nn, L["gap"])
                     self.lead_prev = nn
 
