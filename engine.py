@@ -465,6 +465,9 @@ class Engine:
                 self.quote_note(t, B1, rest)
                 continue
             if self.riff is None:
+                if t % 6:                          # a riff starts on an eighth: a
+                    self.lt = (t // 6 + 1) * 6     #  cross-rhythm riff ends off the
+                    continue                       #  grid, the next waits for it
                 self.start_riff(t)
             deg, semis, dur = self.riff[self.ri]
             self.ri += 1
@@ -497,8 +500,9 @@ class Engine:
                 if L["snap"] and t % (24 if L["snap"] == 1 else TPB) == 0:
                     n = snap(n, ch)                       # strong beats: chord tones
                 d = min(dur, self.p_stop - t)
-                if d > 6 and not self.allowed(n, ch):
-                    n = snap(n, ch)                       # no long notes off the scale
+                if not self.allowed(n, ch) and (semis == 0 or d > 6):
+                    n = snap(n, ch)                       # off the scale: only a short
+                                                          #  written approach tone may
                 n = nearest(n, n, lo, hi)
                 d = self.fits_until(t, d, n)
                 self.lead_note(t, d, n)
@@ -517,13 +521,14 @@ class Engine:
             self.dyn += 1
         elif self.dyn > cap:
             self.dyn -= 1
+        hook = False
         if self.force is not None:              # an answer: the call's motif, moved
             ri, tr = self.force
             tr = max(-7, min(7, tr + rng.pick([-2, -1, 1, 2])))
             self.force = None
         elif (self.st["lead"]["hook"] is not None and self.phr_riff is None
               and rng.byte() < self.st["lead"]["hookp"]):
-            ri, tr = self.st["lead"]["hook"], 0     # the style's signature opener
+            ri, tr, hook = self.st["lead"]["hook"], 0, True   # the signature opener
         elif self.last_riff is not None and rng.byte() < cfg["repeat"]:
             ri, tr = self.last_riff, self.last_tr
         elif self.last_riff is not None and rng.byte() < cfg["seq"]:
@@ -533,10 +538,18 @@ class Engine:
             ri, tr = rng.below(len(self.st["riffs"])), 0
             if ri == self.last_riff:
                 ri = (ri + 1) % len(self.st["riffs"])
+        riff = self.st["riffs"][ri]
+        if not hook:                            # the riff opens on a chord tone:
+            first = next((d for d, s, _ in riff if d is not None), 0)
+            ch, kc = self.chord_at(t), self.lead_chord(t)
+            for off in (0, 1, -1, 2, -2):       #  move it by scale steps until
+                if ch.mask >> (kc.degree(first + tr + off, lo) % 12) & 1:
+                    tr += off
+                    break
         self.last_riff, self.last_tr = ri, tr
         if self.phr_riff is None:
             self.phr_riff = (ri, tr)
-        self.riff, self.ri, self.tr = self.st["riffs"][ri], 0, tr
+        self.riff, self.ri, self.tr = riff, 0, tr
         self.speed = 0
         if rng.byte() < min(255, cfg["fast"] + max(0, self.I - 10) * 12):
             self.speed = 1

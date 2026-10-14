@@ -270,6 +270,9 @@ qdd:     .res 2
 qch:     .res 1
 pbv:     .res 1
 dboost:  .res 1             ; drum odds shift at this intensity (signed)
+hookf:   .res 1             ; start_riff: the hook was chosen (no nudging)
+rfirst:  .res 1             ; the riff's first pitched degree
+nd_i:    .res 1             ; chord-tone nudge: offset index
 
 .segment "JAMBSS5"             ; $0700-$08FF: the loader's while loading only
 qk:      .res 256
@@ -2062,13 +2065,45 @@ lead_bar:
         jmp @lp
 @rf:    lda riffon
         bne @r
-        jsr start_riff
+        lda lt                  ; a riff starts on an eighth: a cross-rhythm
+        sta DVD                 ;  riff ends off the grid, the next waits
+        lda lt+1
+        sta DVD+1
+        lda #6
+        jsr div16
+        cmp #0
+        beq @rs
+        inc DVD                 ; lt = (q + 1) * 6
+        bne @r6
+        inc DVD+1
+@r6:    lda DVD
+        asl a
+        sta lt
+        lda DVD+1
+        rol a
+        sta lt+1
+        lda lt                  ; *2 -> *6: + *4
+        asl a
+        sta tmp16
+        lda lt+1
+        rol a
+        sta tmp16+1
+        clc
+        lda lt
+        adc tmp16
+        sta lt
+        lda lt+1
+        adc tmp16+1
+        sta lt+1
+        jmp @lp
+@rs:    jsr start_riff
 @r:     jsr riff_note
         lda lt                  ; lt >= p_stop: cadence, wait for p_end
         cmp p_stop
         lda lt+1
         sbc p_stop+1
-        bcc @lp
+        bcs *+5
+        jmp @lp
         jsr cadence
         lda p_end
         sta lt
@@ -2159,6 +2194,8 @@ new_phrase:
         jmp phrase_kind
 
 start_riff:
+        lda #0
+        sta hookf
         jsr cap                 ; the swell moves a step a riff
         cmp dyn
         beq @fc
@@ -2188,6 +2225,7 @@ start_riff:
         ldy #ST_HOOK
         lda (STYP),y
         ldx #0
+        inc hookf
         jmp @set
 @nh:    lda lrv
         beq @new
@@ -2236,16 +2274,7 @@ start_riff:
         lda #0
 @nw:    ldx #0
 @set:   sta lriff
-        stx ltr
         stx rtr
-        ldy phrv                ; the phrase's first riff (a call's motif)
-        bne @pv
-        sta phr_ri
-        stx phr_tr
-        inc phrv
-@pv:    lda #1
-        sta lrv
-        sta riffon
         ldy #ST_RIFFS           ; RIFFP = riffs[lriff]
         jsr stw
         lda lriff
@@ -2261,6 +2290,65 @@ start_riff:
         sty ri
         lda (RIFFP),y
         sta rilen
+        ldy #1                  ; the first pitched degree (else 0)
+        ldx rilen
+@f:     lda (RIFFP),y
+        cmp #$80
+        bne @fd
+        iny
+        iny
+        dex
+        bne @f
+        lda #0
+@fd:    sta rfirst
+        lda hookf               ; the riff opens on a chord tone: move it by
+        bne @ndn                ;  scale steps (0 +1 -1 +2 -2) until it does
+        lda lt
+        sta FT
+        lda lt+1
+        sta FT+1
+        jsr lead_range
+        lda NLO
+        sta NB
+        lda #0
+        sta nd_i
+@nl:    ldx nd_i
+        lda rfirst
+        clc
+        adc rtr
+        clc
+        adc ndoff,x
+        pha
+        jsr lead_chord          ; (clobbers A)
+        pla
+        jsr degree
+        pha
+        jsr chord_at
+        pla
+        jsr istone
+        bne @ndh
+        inc nd_i
+        lda nd_i
+        cmp #5
+        bne @nl
+        beq @ndn
+@ndh:   ldx nd_i
+        lda rtr
+        clc
+        adc ndoff,x
+        sta rtr
+@ndn:   lda rtr
+        sta ltr
+        ldy phrv                ; the phrase's first riff (a call's motif)
+        bne @pv
+        lda lriff
+        sta phr_ri
+        lda rtr
+        sta phr_tr
+        inc phrv
+@pv:    lda #1
+        sta lrv
+        sta riffon
         lda #0
         sta speed
         lda intens              ; fast odds + max(0, I - 10) * 12
@@ -2306,17 +2394,8 @@ start_riff:
         bcs @sp
         lda #4
         sta speed
-@sp:    ldy #1                  ; first pitched degree (else 0)
-        ldx rilen
-@f:     lda (RIFFP),y
-        cmp #$80
-        bne @fd
-        iny
-        iny
-        dex
-        bne @f
-        lda #0
-@fd:    clc
+@sp:    lda rfirst
+        clc
         adc rtr
         pha
         lda lt
@@ -2345,6 +2424,7 @@ start_riff:
         sta shift
         rts
 seqd:   .byte $FE,$FF,1,2
+ndoff:  .byte 0,1,$FF,2,$FE
 
 riff_note:                      ; one note of the riff at t = lt
         lda ri                  ; Y -> note record (2 bytes)
@@ -2573,14 +2653,16 @@ lead_pitch:                     ; T4 = deg, T5 = semis, TK = t, TD = dur
         cmp TD
         bcs @ln
         sta TD
-@ln:    lda TD                  ; no long notes off the scale
-        cmp #7
-        bcc @sc
-        ldx T7
-        lda T8
+@ln:    ldx T7                  ; off the scale: only a short, written
+        lda T8                  ;  approach tone may stay
         jsr allowed
         bne @sc
-        ldx T7
+        lda T5
+        beq @lc
+        lda TD
+        cmp #7
+        bcc @sc
+@lc:    ldx T7
         lda T8
         jsr snap
         sta T8
@@ -2966,6 +3048,7 @@ cadence:                        ; the phrase's last note lands on a chord tone
         rts
 ringd:  .byte 0,6,12,24
 
+.segment "JAMCODE2"             ; (room in the player's MAIN)
 rec_add:                        ; X = track of the new lead note -> the record
         ldy hn
         cpy #HMAX
@@ -3017,6 +3100,8 @@ rec_patch:                      ; lnotes[-1] changed: fix its record if in this 
         lda lo_n,x
         sta hr_n,y
 @x:     rts
+
+.segment "JAMCODE"
 
 ; ---- the head: record each plan letter once, replay it after -------------
 head_bar:

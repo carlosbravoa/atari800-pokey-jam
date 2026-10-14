@@ -384,6 +384,8 @@ map_jmono:
 ; mix, by design. So a wrong detection can't change the sound: STEREO stays 1
 ; for the engine and JHW only tells the panel what the machine is.
 jam_catalog:
+        lda #1                  ; FLUTE's vibrato: +-13 cents, not +-27 (the
+        sta live+2*PSTRIDE+6    ;  factory depth reads as out of tune on a lead)
         lda STEREO              ; startup's detect_stereo: the machine
         sta JHW
         lda #1
